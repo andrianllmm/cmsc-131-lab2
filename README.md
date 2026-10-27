@@ -70,11 +70,43 @@ this activity adds. Keep each part short. Update it when the plan changes.
 The four routines `bench.c` expects and what each one returns. Which
 registers you preserve and why.
 
+We write four routines for `bench.c`. All are recursive and none call the C
+library.
+
+| Routine | Arguments | Returns |
+|---|---|---|
+| `qsort_asm` | `int *arr, int n` | nothing; sorts `arr` in place, ascending |
+| `bsearch_asm` | `int *arr, int n, int key` | index of `key`, or -1 if absent |
+| `gcd_asm` | `int a, int b` | gcd of `a` and `b` |
+| `sum_range_asm` | `int lo, int hi` | sum of `lo..hi`, or 0 if `lo > hi` |
+
+`gcd_asm` also sets the global `gcd_depth` to the deepest number of gcd
+calls on the stack, counting the first as 1. `bench.c` reads it after the
+call returns, so we keep the peak, not the current level.
+
+`sum_range_asm` calls `bench_callback` once per call from C, never from its
+recursion. `bench` uses it to start a second call mid-flight and checks
+that both results come out right.
+
+On cdecl: the caller pushes arguments right to left (first at `[ebp+8]`)
+and pops them after the call. Results go in `eax`. `eax`, `ecx`, and `edx`
+are caller-saved, so we can clobber them. `ebx`, `esi`, `edi`, and `ebp`
+are callee-saved, so we push and pop any we use. The hostile caller checks
+this.
+
 ### Solution architecture
 
 A stack frame diagram for one recursive call of `qsort_asm`, showing where
 the arguments, the return address, saved `ebp`, and the saved registers
 sit. Why `sum_range_asm` is reentrant.
+
+The sort and search have to be recursive because the activity tests how we
+build stack frames. Each call keeps its own `lo` and `hi` in its frame. A
+loop with a manual stack would skip that.
+
+We split the code into `sort.asm`, `search.asm`, and `util.asm`, one per
+subsystem. Each of us owns one file, so we don't step on each other and
+the history shows who did what.
 
 ### Measurements
 
@@ -97,10 +129,10 @@ who owns it.
 
 | Week | Goal | Owner |
 |---|---|---|
-| 1 | | |
-| 2 | | |
-| 3 | | |
-| 4 | Defense | |
+| 1 | Design Notes, ownership, build runs on the stubs | All of us |
+| 2 | Sorting and searching pass their checks | @Romyr05, @andrianllmm |
+| 3 | `sum_range_asm`, measurements, quirks and issues | @dejely |
+| 4 | Defense | All of us |
 
 ## Subsystem Ownership
 
@@ -110,9 +142,9 @@ share one. The commit history must agree with this table.
 
 | Subsystem | Owner |
 |---|---|
-| Sorting (`qsort_asm` and its partition) | |
-| Searching (`bsearch_asm`, `gcd_asm`) | |
-| Convention and measurement (`sum_range_asm`, the benchmarks) | |
+| Sorting (`qsort_asm` and its partition) | @Romyr05 |
+| Searching (`bsearch_asm`, `gcd_asm`) | @andrianllmm |
+| Convention and measurement (`sum_range_asm`, the benchmarks) | @dejely |
 
 ## Quirks and Issues
 
