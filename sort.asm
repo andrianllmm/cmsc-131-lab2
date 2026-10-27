@@ -58,18 +58,141 @@
 segment .text
         global  _qsort_asm
 _qsort_asm:
+; starting the sort
+        enter   0,0                ; set the pin: ebp = esp
+        pusha                      ; save all 8 registers for C
+
+        ; if n<=1 return;
+        ; qsort_rec(arr,lo,hi); lo -> 0 and hi -> n-1
+
+        mov     eax, [ebp+12]      ; eax = n
+        cmp     eax, 1
+        jle     .done              ; n <= 1 → nothing to sort
+
+        dec eax
+        push eax                     ; hi = n - 1
+        push dword 0                 ; lo = 0, since start with 0
+        push dword [ebp+8]           ; arr; d word is needed for 32-bit pointer
+        call    qsort_rec            ; qsort_rec(arr, lo, hi)
+        add     esp, 12              ; clean the arguments off the stack
+
+.done:
+        popa                       ; give C its registers back
+        mov     eax, 0             ; no return value (qsort_asm is void)
+        leave                      ; undo enter
+        ret                        ; back to C
+
+;
+; qsort_rec(arr, lo, hi) - the recursive quicksort.
+;
+; Internal convention: cdecl, the same as the C-facing routine.
+;       int hi                    [ebp+16]
+;       int lo                    [ebp+12]
+;       int *arr                  [ebp+8]
+; Returns nothing. Clobbers eax, ecx, edx. Preserves ebx, esi, edi, ebp.
+; The caller removes the 3 arguments.
+;
+qsort_rec:
+
+; void qsort_rec(int *arr, int lo, int hi) {
+;     if (lo >= hi) return;              // 0 or 1 card → done
+;     int p = partition(arr, lo, hi);    // pivot is now home at index p
+;     qsort_rec(arr, lo, p - 1);         // sort the left piece
+;     qsort_rec(arr, p + 1, hi);         // sort the right piece
+; }
+
+
         enter   0,0
-        pusha
+        push    ebx                ; ebx will hold p, so save the caller's ebx
 
-        ;
-        ; TODO: sort.
-        ;
-        ; Remember the array elements are four bytes, so index with a *4
-        ; scale. The first thing to handle is the empty and single-element
-        ; arrays: n <= 1 sorts itself.
-        ;
+;     if (lo >= hi) return;
+        mov     eax, [ebp+12]      ; eax = lo
+        cmp     eax, [ebp+16]
+        jge     .done              ; lo >= hi (signed) → 0 or 1 element, stop
 
-        popa
-        mov     eax, 0
+;     int p = partition(arr, lo, hi);
+        push    dword [ebp+16]     ; hi
+        push    dword [ebp+12]     ; lo
+        push    dword [ebp+8]      ; arr
+        call    partition          ; eax = p
+        add     esp, 12
+        mov     ebx, eax           ; ebx = p (ebx survives the calls below)
+
+        ;     qsort_rec(arr, lo, p - 1);
+        mov     eax, ebx
+        dec     eax                ; eax = p - 1
+        push    eax                ; hi = p - 1
+        push    dword [ebp+12]     ; lo
+        push    dword [ebp+8]      ; arr
+        call    qsort_rec          ; qsort_rec(arr, lo, p - 1)
+        add     esp, 12
+
+        ;     qsort_rec(arr, p + 1, hi);
+        mov     eax, ebx
+        inc     eax                ; eax = p + 1
+        push    dword [ebp+16]     ; hi
+        push    eax                ; lo = p + 1
+        push    dword [ebp+8]      ; arr
+        call    qsort_rec          ; qsort_rec(arr, p + 1, hi)
+        add     esp, 12
+
+.done:
+        pop     ebx                ; give the caller its ebx back
+        leave
+        ret
+
+;
+; partition(arr, lo, hi) - Lomuto partition, last element as pivot.
+;
+; Internal convention: cdecl, the same as qsort_rec.
+;       int hi                    [ebp+16]
+;       int lo                    [ebp+12]
+;       int *arr                  [ebp+8]
+; Returns p, the pivot's final index, in eax. Clobbers ecx, edx.
+; Preserves ebx, esi, edi, ebp. The caller removes the 3 arguments.
+;
+; Registers inside the loop:
+;       esi = arr      edi = pivot      ebx = i      ecx = j
+;       eax, edx = temporaries for the swap
+;
+partition:
+        enter   0,0
+        push    ebx                ; save the 3 callee-saved registers we use
+        push    esi
+        push    edi
+
+        mov     esi, [ebp+8]       ; esi = arr
+        mov     ecx, [ebp+12]      ; ecx = j = lo
+        mov     edx, [ebp+16]      ; edx = hi
+        mov     edi, [esi + edx*4] ; edi = pivot = arr[hi]
+        mov     ebx, ecx
+        dec     ebx                ; ebx = i = lo - 1
+
+.loop:
+        cmp     ecx, [ebp+16]
+        jge     .after             ; j >= hi → loop finished
+        mov     eax, [esi + ecx*4] ; eax = arr[j]
+        cmp     eax, edi
+        jg      .next              ; arr[j] > pivot (signed) → skip
+        inc     ebx                ; i = i + 1
+        mov     edx, [esi + ebx*4] ; swap arr[i], arr[j]
+        mov     [esi + ebx*4], eax
+        mov     [esi + ecx*4], edx
+.next:
+        inc     ecx                ; j = j + 1
+        jmp     .loop
+
+.after:
+        inc     ebx                ; ebx = i + 1
+        mov     ecx, [ebp+16]      ; ecx = hi
+        mov     eax, [esi + ebx*4] ; swap arr[i + 1], arr[hi]
+        mov     edx, [esi + ecx*4]
+        mov     [esi + ebx*4], edx
+        mov     [esi + ecx*4], eax
+        mov     eax, ebx           ; return p = i + 1
+
+        pop     edi                ; restore in reverse order
+        pop     esi
+        pop     ebx
         leave
         ret
