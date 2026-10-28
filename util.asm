@@ -76,18 +76,54 @@ segment .text
         extern  _bench_callback
 _gcd_asm:
         enter   0,0
-        pusha
 
-        ;
-        ; TODO: gcd. Count the calls. Reset gcd_depth at entry, then keep
-        ; the deepest level reached, with the first call as level 1. Carry
-        ; the current level in a register or count it in the global, but
-        ; leave the peak behind. bench.c reads gcd_depth after the call
-        ; returns, so a counter that returns to zero on exit prints 0.
-        ;
+        mov     dword [_gcd_depth], 0   ; reset depth
 
-        popa
-        mov     eax, 0
+        push    dword 1                 ; level 1
+        push    dword [ebp+12]          ; b
+        push    dword [ebp+8]           ; a
+        call    gcd_rec
+        add     esp, 12
+
+        leave
+        ret
+
+;
+; gcd_rec(a, b, level): gcd of a and b.
+; Internal, cdecl.
+; Uses only eax, ecx, edx.
+; Raises gcd_depth to level, so the peak stays after returning.
+;
+;       int level                   [ebp+16]
+;       int b                       [ebp+12]
+;       int a                       [ebp+8]
+;
+gcd_rec:
+        enter   0,0
+
+        mov     ecx, [ebp+16]           ; ecx = level
+        cmp     ecx, [_gcd_depth]
+        jle     .counted
+        mov     [_gcd_depth], ecx       ; new peak
+.counted:
+
+        mov     eax, [ebp+8]            ; eax = a
+        mov     ecx, [ebp+12]           ; ecx = b
+        cmp     ecx, 0
+        je      .done                   ; gcd(a, 0) = a
+
+        cdq
+        idiv    ecx                     ; edx = a % b
+
+        mov     eax, [ebp+16]
+        inc     eax
+        push    eax                     ; level + 1
+        push    edx                     ; a % b
+        push    ecx                     ; b
+        call    gcd_rec
+        add     esp, 12
+
+.done:
         leave
         ret
 
