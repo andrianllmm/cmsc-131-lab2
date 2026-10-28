@@ -49,23 +49,75 @@ segment .text
         global  _bsearch_asm
 _bsearch_asm:
         enter   0,0
-        pusha
 
-        ;
-        ; TODO: search.
-        ;
-        ; n is a count, so the search range is lo=0, hi=n-1. An empty array
-        ; has n=0, which makes hi=-1 before the first comparison. That case
-        ; must return -1 immediately.
-        ;
-        ; For the midpoint, compute hi - lo first, halve it, then add lo.
-        ; The base case runs before the midpoint, so hi - lo is never
-        ; negative there and a shift halves it. If you reach for idiv
-        ; instead, sign-extend with cdq. mov edx, 0 is right only for a
-        ; dividend that cannot be negative.
-        ;
+        mov     eax, [ebp+12]           ; eax = n
+        dec     eax                     ; hi = n - 1
 
-        popa
-        mov     eax, 0
+        push    dword [ebp+16]          ; key
+        push    eax                     ; hi
+        push    dword 0                 ; lo
+        push    dword [ebp+8]           ; arr
+        call    bsearch_rec
+        add     esp, 16                 ; pop 4 args
+
+        leave
+        ret
+
+;
+; bsearch_rec(arr, lo, hi, key): index of key in arr[lo..hi], or -1.
+; Internal, cdecl.
+; Uses only eax, ecx, edx.
+;
+;       int key                     [ebp+20]
+;       int hi                      [ebp+16]
+;       int lo                      [ebp+12]
+;       int *arr                    [ebp+8]
+;
+bsearch_rec:
+        enter   0,0
+
+        mov     ecx, [ebp+12]           ; ecx = lo
+        mov     edx, [ebp+16]           ; edx = hi
+        cmp     ecx, edx
+        jg      .absent                 ; lo > hi: empty range
+
+        ; mid = lo + (hi - lo) / 2
+        ; (lo + hi) / 2 can overflow past 2^31 - 1.
+        ; hi - lo cannot, and is never negative here.
+        mov     eax, edx                ; eax = hi
+        sub     eax, ecx                ; eax = hi - lo
+        shr     eax, 1                  ; eax = (hi - lo) / 2
+        add     eax, ecx                ; eax = mid
+
+        mov     edx, [ebp+8]            ; edx = arr
+        mov     edx, [edx+4*eax]        ; edx = arr[mid], 4 bytes per int
+        cmp     edx, [ebp+20]           ; arr[mid] vs key
+        je      .done                   ; found, eax = mid
+        jl      .right                  ; arr[mid] < key: go right
+
+.left:                                  ; arr[mid] > key: go left
+        dec     eax                     ; eax = mid - 1
+        push    dword [ebp+20]          ; key
+        push    eax                     ; hi = mid - 1
+        push    dword [ebp+12]          ; lo
+        push    dword [ebp+8]           ; arr
+        call    bsearch_rec
+        add     esp, 16                 ; pop 4 args
+        jmp     .done                   ; eax = result
+
+.right:
+        inc     eax                     ; eax = mid + 1
+        push    dword [ebp+20]          ; key
+        push    dword [ebp+16]          ; hi
+        push    eax                     ; lo = mid + 1
+        push    dword [ebp+8]           ; arr
+        call    bsearch_rec
+        add     esp, 16                 ; pop 4 args
+        jmp     .done                   ; eax = result
+
+.absent:
+        mov     eax, -1                 ; not found
+
+.done:
         leave
         ret
