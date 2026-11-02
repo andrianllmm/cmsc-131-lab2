@@ -130,7 +130,6 @@ gcd_rec:
         global  _sum_range_asm
 _sum_range_asm:
         enter   0,0
-        pusha
 
         ;
         ; TODO: sum_range. Call bench_callback once, then recurse on
@@ -140,7 +139,42 @@ _sum_range_asm:
         ; accumulator here is what breaks reentrancy.
         ;
 
-        popa
-        mov     eax, 0
+        and     esp, -16                ; align the stack before calling C
+        call    _bench_callback         ; once per C entry, including empty ranges
+
+        sub     esp, 8                  ; padding keeps the call aligned
+        push    dword [ebp+12]          ; hi survives the callback in our frame
+        push    dword [ebp+8]           ; lo
+        call    sum_range_rec
+        add     esp, 16                 ; remove two arguments and padding
+
+        leave                           ; also restores the alignment space
+        ret
+
+;
+; sum_range_rec(lo, hi): sum of lo..hi inclusive, or 0 if lo > hi.
+; Internal, cdecl: lo at [ebp+8], hi at [ebp+12], result in eax.
+; Uses only eax; preserves ebx/esi/edi/ebp. Each frame keeps its own lo
+; until the recursive result returns. Only the C-facing entry calls back.
+;
+sum_range_rec:
+        enter   0,0
+
+        mov     eax, [ebp+8]            ; eax = lo
+        cmp     eax, [ebp+12]
+        jg      .empty                  ; lo > hi: return 0
+        je      .done                   ; lo == hi: return lo (no lo+1 overflow)
+
+        inc     eax                     ; lo + 1
+        push    dword [ebp+12]          ; hi
+        push    eax
+        call    sum_range_rec
+        add     esp, 8
+        add     eax, [ebp+8]            ; this frame's lo + recursive sum
+        jmp     .done
+
+.empty:
+        xor     eax, eax
+.done:
         leave
         ret

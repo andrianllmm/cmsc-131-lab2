@@ -108,6 +108,24 @@ We split the code into `sort.asm`, `search.asm`, and `util.asm`, one per
 subsystem. Each of us owns one file, so we don't step on each other and
 the history shows who did what.
 
+`sum_range_asm` calls `bench_callback` once, then calls the internal
+`sum_range_rec(lo, hi)` helper. Only the outer entry calls the callback.
+The helper returns 0 for an empty range, returns `lo` for a single value,
+and otherwise adds `lo` to the recursive sum of `lo + 1..hi`. Stopping at
+equality also avoids incrementing `INT_MAX` at the end of a range.
+
+The sum is reentrant because each call keeps its arguments and pending
+additions in its own stack frames. A callback can start another sum without
+changing the first call's state. Neither routine uses mutable `.data` or
+`.bss` storage, and neither touches `gcd_depth`. Both preserve the
+callee-saved registers and return the sum in `eax`.
+
+A non-reentrant version could keep a shared accumulator in `.bss`, reset
+it at entry, and add each value to it. If the outer call reset that
+accumulator before the callback, the nested call would leave 5050 in it.
+The outer call would then add its own 500500 and return 505550. With stack
+frames, the nested result stays separate and both sums are correct.
+
 ### Measurements
 
 The ratio `bench` reports on `random1000.txt`, `sorted1000.txt`,
