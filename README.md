@@ -134,11 +134,40 @@ and its cause. One improvement and its estimated effect.
 
 | File | Ratio |
 |---|---|
-| `random1000.txt` | |
-| `sorted1000.txt` | |
-| `reverse1000.txt` | |
-| `duplicates.txt` | |
-| `identical.txt` | |
+| `random1000.txt` | 0.40x |
+| `sorted1000.txt` | 6.07x |
+| `reverse1000.txt` | 3.10x |
+| `duplicates.txt` | 1.06x |
+| `identical.txt` | 1.49x |
+
+Measured on November 2, 2026, on Linux x86_64 with an Intel Core i5-12450H,
+using the default Makefile build (32-bit, no C optimization flag). Each
+entry is the median of five `./bench --sort tests/<file>` invocations.
+Each invocation times 200 sorts per implementation, including copying the
+input before each sort. All 25 invocations reported `Match: YES`.
+The ratio is assembly time divided by C `qsort` time: below 1 means the
+assembly is faster, above 1 means it is slower. Timings vary between runs
+and machines. The first three files contain 1000 integers each;
+`duplicates.txt` contains 500 and `identical.txt` contains 100.
+
+`sorted1000.txt` had the worst measured ratio. With Lomuto partition and
+the last element as pivot, an ascending array always picks the largest
+value. Each partition leaves subarrays of sizes n - 1 and 0, so the work
+is 999 + 998 + ... + 1 = 499500 comparisons for 1000 elements: O(n²)
+time and O(n) recursion depth. Reverse-sorted and identical inputs also
+produce these unbalanced partitions. On identical input, every value
+passes the `<= pivot` test. Their lower measured ratios do not change
+that worst-case complexity; the identical fixture is also much smaller.
+
+One possible improvement is to choose the median of the first, middle,
+and last values, move it to the last position, then partition. For sorted
+distinct input, this would give roughly balanced splits and O(n log n)
+work. At n = 1000, the comparison count would be on the order of 10000
+instead of 499500, roughly 50 times fewer. This estimates comparisons,
+not a measured runtime speedup; pivot selection and other costs still
+matter. Median-of-three would not fix identical input with the current
+two-way partition. This is a proposed improvement only; the implementation
+keeps the manual's required last-element pivot.
 
 ### Timeline
 
