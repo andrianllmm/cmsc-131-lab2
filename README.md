@@ -104,6 +104,28 @@ The sort and search have to be recursive because the activity tests how we
 build stack frames. Each call keeps its own `lo` and `hi` in its frame. A
 loop with a manual stack would skip that.
 
+The recursion happens in `qsort_rec`, the routine `qsort_asm` calls. One
+`qsort_rec` frame:
+
+```
+  hi               [ebp+16]   pushed by caller
+  lo               [ebp+12]
+  arr              [ebp+8]
+  return address   [ebp+4]    pushed by call
+  caller's ebp     [ebp]      pushed by enter
+  caller's ebx     [ebp-4]    pushed by us
+```
+
+Each recursive call adds a new frame below with its own `lo` and `hi`.
+The caller pops the arguments with `add esp, 12`.
+
+Preserved registers:
+
+- `qsort_asm`: all eight (`pusha`/`popa`).
+- `qsort_rec`: `ebx`, which holds `p` across both recursive calls.
+- `partition`: `ebx`, `esi`, `edi`, which hold `i`, `arr` and the pivot.
+- `ebp`: saved by `enter`, restored by `leave`, in every routine.
+
 We split the code into `sort.asm`, `search.asm`, and `util.asm`, one per
 subsystem. Each of us owns one file, so we don't step on each other and
 the history shows who did what.
