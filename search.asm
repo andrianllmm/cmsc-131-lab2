@@ -88,8 +88,12 @@ bsearch_rec:
         ; The first thing to do is check if the range is empty. 
         ;If lo > hi, then the key is absent and we return -1.
         ;Otherwise, we compute the midpoint and compare the value at that index with the key. 
+
+        ; Initialize arguments
         mov     ecx, [ebp+12]           ; ecx = lo
         mov     edx, [ebp+16]           ; edx = hi
+
+        ; Checking if the range is empty
         cmp     ecx, edx
         jg      .absent                 ; lo > hi: empty range
 
@@ -107,7 +111,7 @@ bsearch_rec:
         mov     edx, [edx + eax*4]      ; edx = arr[mid]
 
         ; one compare sets the flags for all three outcomes
-        cmp     edx, [ebp+20]
+        cmp     edx, [ebp+20]           ; Key we are searching for
         je      .done                   ; arr[mid] == key: found, eax = mid
         jl      .right                  ; arr[mid] < key: go right
 
