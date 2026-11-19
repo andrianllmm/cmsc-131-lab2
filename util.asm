@@ -73,16 +73,24 @@ _gcd_depth      resd    1
 
 segment .text
         global  _gcd_asm
+
+; Euclids algorithm for gcd, recursive
 _gcd_asm:
         enter   0,0                     ; push ebp; mov ebp, esp
                                         ; uses only eax, so nothing else to save
 
         mov     dword [_gcd_depth], 0   ; reset the depth for this call
 
+        ; PUshing the arguments for the recursive gcd function
         push    dword 1                 ; level = 1, the first call
         push    dword [ebp+12]          ; b
         push    dword [ebp+8]           ; a
+
+        ; Calling the recursive gcd function
+        ; computing gcd(a, b) and passing the level as 1
         call    gcd_rec                 ; eax = gcd_rec(a, b, 1)
+
+        ; Cleaning up the stack after the call
         add     esp, 12                 ; remove 3 arguments
 
         leave
@@ -99,31 +107,49 @@ _gcd_asm:
 ; edi, ebp. The caller removes the 3 arguments.
 ; Raises gcd_depth to level, so the peak stays after the calls return.
 ;
+
+
+; Records how deep the recursion went
 gcd_rec:
         enter   0,0
 
         ; gcd_depth = max(gcd_depth, level)
-        mov     ecx, [ebp+16]           ; ecx = level
-        cmp     ecx, [_gcd_depth]
+        mov     ecx, [ebp+16]           ; the level of this call
+
+        ; For safety checking only (works only on the first iteration)
+        cmp     ecx, [_gcd_depth]       ; Compres level with current peak stored in global
         jle     .depth_recorded         ; level <= gcd_depth: keep the peak
+        
         mov     [_gcd_depth], ecx       ; new peak
+
+; Actual GCD calculation
 .depth_recorded:
 
+        ; Checking if b == 0, if so return a
         mov     eax, [ebp+8]            ; eax = a
         mov     ecx, [ebp+12]           ; ecx = b
         cmp     ecx, 0
         je      .done                   ; b == 0: return a, already in eax
 
+        ; Signed division
         cdq                             ; sign-extend eax into edx:eax for idiv
         idiv    ecx                     ; edx = a % b
 
         ; return gcd_rec(b, a % b, level + 1)
+
+        ; Initializing the level for the next recursive call
         mov     eax, [ebp+16]           ; eax = level
         inc     eax                     ; eax = level + 1
+
+        ; Pushing the next arguments for the recursive call
         push    eax                     ; level + 1
         push    edx                     ; a % b
         push    ecx                     ; b
+
+        ; Calling the recursive gcd function
         call    gcd_rec                 ; eax = gcd_rec(b, a % b, level + 1)
+
+        ; Cleaning up
         add     esp, 12                 ; remove 3 arguments
 
 .done:
@@ -132,17 +158,27 @@ gcd_rec:
 
         global  _sum_range_asm
         extern  _bench_callback
+
+
+; utility function for another recursive function
+; This practices reentrancy
+ 
 _sum_range_asm:
         enter   0,0                     ; push ebp; mov ebp, esp
                                         ; uses only eax, so nothing else to save
 
         ; Once per call from C, including empty ranges. bench uses this
         ; callback to start a second sum_range_asm before this one returns.
+        ; Checking if correct yung sum_range_asm and is re entrant 
         call    _bench_callback         ; bench_callback()
 
+        ; Initializes argument 
         push    dword [ebp+12]          ; hi
         push    dword [ebp+8]           ; lo
+
+        ; Calls the sum_range_rc
         call    sum_range_rec           ; eax = sum_range_rec(lo, hi)
+
         add     esp, 8                  ; remove 2 arguments
 
         leave
@@ -162,17 +198,30 @@ _sum_range_asm:
 sum_range_rec:
         enter   0,0
 
+        ; Initializes arguments for the recursive call
         mov     eax, [ebp+8]            ; eax = lo
+
+        ; Comparing hi vs lo
         cmp     eax, [ebp+12]
+
+        ; Checking if the range is empty or done
         jg      .empty                  ; lo > hi: return 0
         je      .done                   ; lo == hi: return lo (avoids lo + 1 overflow)
 
         ; return lo + sum_range_rec(lo + 1, hi)
         inc     eax                     ; eax = lo + 1
+
+        ; lo + 1 (first argument for the next recursive call)
         push    dword [ebp+12]          ; hi
         push    eax                     ; lo + 1
+
+        ; Next recursive call to sum_range_rec
         call    sum_range_rec           ; eax = sum_range_rec(lo + 1, hi)
+
+        ; Removing 2 arguments
         add     esp, 8                  ; remove 2 arguments
+
+        ; add the current lo to the result of the recursive call
         add     eax, [ebp+8]            ; eax += this frame's lo
         jmp     .done
 
